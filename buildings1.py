@@ -83,9 +83,20 @@ def rate_pool(household, bldgoptions):
         # lot size
         bldgoptions.loc[bldgoptions['classacre'] == hhacre, 'choiceScore'] += 2
         # value (for one unit buildings only)
+        tenval = bldgoptions['totalEstValue'] * 0.1
+        twentyfiveval = bldgoptions['totalEstValue'] * 0.25
+        # +/- 10%
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
-                        (hhvalp - 5000 < bldgoptions['totalEstValue']) &
-                        (bldgoptions['totalEstValue'] < hhvalp + 5000), 'choiceScore'] += 2
+                        (hhvalp - tenval < bldgoptions['totalEstValue']) &
+                        (bldgoptions['totalEstValue'] < hhvalp + tenval), 'choiceScore'] += 2
+        # from 10-25% lower
+        bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
+                        (hhvalp - twentyfiveval < bldgoptions['totalEstValue']) &
+                        (bldgoptions['totalEstValue'] < hhvalp - tenval), 'choiceScore'] += 1
+        # from 10-25% higher
+        bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
+                        (hhvalp + tenval < bldgoptions['totalEstValue']) &
+                        (bldgoptions['totalEstValue'] < hhvalp + twentyfiveval), 'choiceScore'] += 1
 
 
     return bldgoptions
@@ -95,8 +106,10 @@ def rate_pool(household, bldgoptions):
 def assign_building(rated_pool):
     # make a selection given the weights
     rankedPool = rated_pool.sort_values('choiceScore',ascending=False).reset_index()
-    # for initial testing, give them top choice
-    selectedID = rankedPool.iloc[0]['TEMP_BLDG_ID']
+    # give them random from top...quartile
+    topquartile = rankedPool.choiceScore.quantile(q=0.25)
+    rankedPoolTop = rankedPool[rankedPool['choiceScore'] <= topquartile]
+    selectedID = rankedPoolTop.sample(1).iloc[0]['building_id']
     score = rankedPool.iloc[0]['choiceScore']
 
     return selectedID, score
@@ -108,14 +121,14 @@ def removeAndUpdate(buildingdf, hhdf, hhID, bldgID):
     hhdf = hhdf[hhdf['household_id'] != hhID]
 
     try:
-        units = buildingdf[buildingdf['TEMP_BLDG_ID'] == bldgID]['residential_units'].values[0]
+        units = buildingdf[buildingdf['building_id'] == bldgID]['residential_units'].values[0]
     except IndexError:
         units = 0
 
     if units == 0:
-        buildingdf = buildingdf[buildingdf['TEMP_BLDG_ID'] != bldgID]
+        buildingdf = buildingdf[buildingdf['building_id'] != bldgID]
     else:
-        buildingdf.loc[buildingdf['TEMP_BLDG_ID'] == bldgID, 'residential_units'] = units - 1
+        buildingdf.loc[buildingdf['building_id'] == bldgID, 'residential_units'] = units - 1
 
     return buildingdf, hhdf
 
@@ -159,7 +172,7 @@ resultdf, unmatched = setup(hh)
 finalresult = choose_building(hh, bldg, resultdf, unmatched)
 
 hhwid = hh.merge(finalresult,left_on='household_id',right_on=finalresult.index)
-allinfo = hhwid.merge(bldg,right_on='TEMP_BLDG_ID',left_on='bldgid')
+allinfo = hhwid.merge(bldg,right_on='building_id',left_on='bldgid')
 allinfo = allinfo[['household_id','maz','taz','puma',
          'BUS','CONP','BLD','classbldg','residential_units',
          'VALP','totalEstValue','land_value','improvement_value',

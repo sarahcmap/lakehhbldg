@@ -9,11 +9,12 @@ description: assign synthetic households to buildings in Lake County
 
 import pandas as pd
 import random
+import numpy as np
 
 
 # TEST DATA
 hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh10149.csv")
-bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg10149.csv")
+bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg10149_2.csv")
 
 
 def maz_filter(household, unmatched):
@@ -21,7 +22,7 @@ def maz_filter(household, unmatched):
 
     rowhh = hh[hh['household_id'] == household]
     hhmaz = rowhh.maz.values[0]
-    bldgoptions = bldg[(bldg['subzone17'] == hhmaz) & (bldg['residential_units'] > 0)]
+    bldgoptions = bldg[(bldg['subzone17'] == hhmaz) & (bldg['residential_units'] > 0)].copy()
 
     if len(bldgoptions) == 0:
         print('no houses')
@@ -42,7 +43,7 @@ def maz_filter_remainder(unmatched):
 def rate_pool(household, bldgoptions):
     bldgoptions['choiceScore'] = 0
 
-    rowhh = hh[hh['household_id'] == household]
+    rowhh = hh.loc[hh['household_id'] == household]
 
     hhtype = rowhh.BLD.values[0]
     hhyear = rowhh.YBL.values[0]
@@ -83,20 +84,20 @@ def rate_pool(household, bldgoptions):
         # lot size
         bldgoptions.loc[bldgoptions['classacre'] == hhacre, 'choiceScore'] += 2
         # value (for one unit buildings only)
-        tenval = bldgoptions['totalEstValue'] * 0.1
-        twentyfiveval = bldgoptions['totalEstValue'] * 0.25
+        bldgoptions['tenval'] = bldgoptions['totalEstValue'] * 0.1
+        bldgoptions['twentyfiveval'] = bldgoptions['totalEstValue'] * 0.25
         # +/- 10%
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
-                        (hhvalp - tenval < bldgoptions['totalEstValue']) &
-                        (bldgoptions['totalEstValue'] < hhvalp + tenval), 'choiceScore'] += 2
+                        (hhvalp - bldgoptions['tenval'] < bldgoptions['totalEstValue']) &
+                        (bldgoptions['totalEstValue'] < hhvalp + bldgoptions['tenval']), 'choiceScore'] += 2
         # from 10-25% lower
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
-                        (hhvalp - twentyfiveval < bldgoptions['totalEstValue']) &
-                        (bldgoptions['totalEstValue'] < hhvalp - tenval), 'choiceScore'] += 1
+                        (hhvalp - bldgoptions['twentyfiveval'] < bldgoptions['totalEstValue']) &
+                        (bldgoptions['totalEstValue'] < hhvalp - bldgoptions['tenval']), 'choiceScore'] += 1
         # from 10-25% higher
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
-                        (hhvalp + tenval < bldgoptions['totalEstValue']) &
-                        (bldgoptions['totalEstValue'] < hhvalp + twentyfiveval), 'choiceScore'] += 1
+                        (hhvalp + bldgoptions['tenval'] < bldgoptions['totalEstValue']) &
+                        (bldgoptions['totalEstValue'] < hhvalp + bldgoptions['twentyfiveval']), 'choiceScore'] += 1
 
 
     return bldgoptions
@@ -106,19 +107,21 @@ def rate_pool(household, bldgoptions):
 def assign_building(rated_pool):
     # make a selection given the weights
     rankedPool = rated_pool.sort_values('choiceScore',ascending=False).reset_index()
-    # give them random from top...quartile
-    topquartile = rankedPool.choiceScore.quantile(q=0.25)
-    rankedPoolTop = rankedPool[rankedPool['choiceScore'] <= topquartile]
+    # give them random from top...quartile of unique values
+    topquartile = np.percentile(rankedPool.choiceScore.unique(), 75)
+    rankedPoolTop = rankedPool[rankedPool['choiceScore'] >= topquartile]
+    # random from top 5
+    # topfive = rankedPool.iloc[0:5]
     selectedID = rankedPoolTop.sample(1).iloc[0]['building_id']
-    score = rankedPool.iloc[0]['choiceScore']
+    score = rankedPool[rankedPool['building_id'] == selectedID]['choiceScore'].values[0]
 
     return selectedID, score
 
 
 def removeAndUpdate(buildingdf, hhdf, hhID, bldgID):
     # decrease the selected building's res_units count by one or remove building if 0
-    hhdf[hhdf['household_id'] == hhID]['building_id'] = bldgID
-    hhdf = hhdf[hhdf['household_id'] != hhID]
+    hhdf.loc[hhdf['household_id'] == hhID, 'building_id'] = bldgID
+    hhdf = hhdf.loc[hhdf['household_id'] != hhID].copy()
 
     try:
         units = buildingdf[buildingdf['building_id'] == bldgID]['residential_units'].values[0]
@@ -126,7 +129,7 @@ def removeAndUpdate(buildingdf, hhdf, hhID, bldgID):
         units = 0
 
     if units == 0:
-        buildingdf = buildingdf[buildingdf['building_id'] != bldgID]
+        buildingdf = buildingdf.loc[buildingdf['building_id'] != bldgID].copy()
     else:
         buildingdf.loc[buildingdf['building_id'] == bldgID, 'residential_units'] = units - 1
 
@@ -157,11 +160,11 @@ def choose_building(hhdf, bldgdf, resultdf, unmatched, pickorder=0):
         # select
         selectedID, score = assign_building(ratedBldgOptions)
         # assign and update
-        bldg, hh = removeAndUpdate(bldgdf, hhdf, chooserHH,selectedID)
+        bldg, hh = removeAndUpdate(bldgdf, hhdf, chooserHH, selectedID)
 
         resultdf.loc[chooserHH, ['pickorder','bldgid','score']] = [pickorder, selectedID, score]
 
-        choose_building(hh, bldg, resultdf, pickorder)
+        choose_building(hh, bldg, resultdf, unmatched=unmatched, pickorder=pickorder)
     else:
         print('all done')
 

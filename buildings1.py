@@ -13,8 +13,8 @@ import numpy as np
 
 
 # TEST DATA
-hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh10149.csv")
-bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg10149_2.csv")
+hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh3.csv")
+bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg3.csv")
 
 
 def maz_filter(household, unmatched):
@@ -27,9 +27,12 @@ def maz_filter(household, unmatched):
     if len(bldgoptions) == 0:
         print('no houses')
         unmatched.append(household)
+        print(unmatched)
+        return bldgoptions, unmatched
+
         # have not built out unmatched pathway
     else:
-        return bldgoptions
+        return bldgoptions, unmatched
 
 
 
@@ -109,10 +112,12 @@ def assign_building(rated_pool):
     rankedPool = rated_pool.sort_values('choiceScore',ascending=False).reset_index()
     # give them random from top...quartile of unique values
     topquartile = np.percentile(rankedPool.choiceScore.unique(), 75)
-    rankedPoolTop = rankedPool[rankedPool['choiceScore'] >= topquartile]
-    # random from top 5
-    # topfive = rankedPool.iloc[0:5]
-    selectedID = rankedPoolTop.sample(1).iloc[0]['building_id']
+    if topquartile >=2:
+        rankedPoolTop = rankedPool[rankedPool['choiceScore'] >= topquartile]
+        selectedID = rankedPoolTop.sample(1).iloc[0]['building_id']
+    else: # if very low, just get the top one
+        topscore = rankedPool.iloc[0]
+        selectedID = topscore['building_id']
     score = rankedPool[rankedPool['building_id'] == selectedID]['choiceScore'].values[0]
 
     return selectedID, score
@@ -142,37 +147,43 @@ def setup(hh):
     #result df will be like household_id, pick order, building id, score
     resultdf = pd.DataFrame(index=hhids, columns=['pickorder','bldgid','score'])
     unmatched = []
+    # randomize once in beginning
+    random.shuffle(hhids)
 
-    return resultdf, unmatched
+    return resultdf, unmatched, hhids
 
-# process flow
-def choose_building(hhdf, bldgdf, resultdf, unmatched, pickorder=0):
-    hhids = [x for x in hhdf.household_id]
 
-    if len(hhids) > 0:
-        chooserHH = random.choice(hhids)
+def matchHouseholds(hhids, unmatched, bldg, hhdf):
+    pickorder = 0
+
+    for i in hhids:
         pickorder += 1
+        print(pickorder)
 
         # get options in maz
-        bldgoptions = maz_filter(chooserHH, unmatched)
-        # rate options
-        ratedBldgOptions = rate_pool(chooserHH, bldgoptions)
-        # select
-        selectedID, score = assign_building(ratedBldgOptions)
-        # assign and update
-        bldg, hh = removeAndUpdate(bldgdf, hhdf, chooserHH, selectedID)
+        bldgoptions, unmatched = maz_filter(i, unmatched)
 
-        resultdf.loc[chooserHH, ['pickorder','bldgid','score']] = [pickorder, selectedID, score]
+        if len(bldgoptions) > 0:
+            # rate options
+            ratedBldgOptions = rate_pool(i, bldgoptions)
+            # select
+            selectedID, score = assign_building(ratedBldgOptions)
+            # assign and update
+            bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
 
-        choose_building(hh, bldg, resultdf, unmatched=unmatched, pickorder=pickorder)
-    else:
-        print('all done')
+            resultdf.loc[i, ['pickorder','bldgid','score']] = [pickorder, selectedID, score]
+
+        else:
+            hhdf = hhdf.loc[hhdf['household_id'] != i].copy()
+
+    print('all done')
 
     return resultdf
 
 
-resultdf, unmatched = setup(hh)
-finalresult = choose_building(hh, bldg, resultdf, unmatched)
+
+resultdf, unmatched, hhids = setup(hh)
+finalresult = matchHouseholds(hhids=hhids, unmatched=unmatched, bldg=bldg, hhdf=hh)
 
 hhwid = hh.merge(finalresult,left_on='household_id',right_on=finalresult.index)
 allinfo = hhwid.merge(bldg,right_on='building_id',left_on='bldgid')

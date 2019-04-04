@@ -13,8 +13,10 @@ import numpy as np
 
 
 # TEST DATA
-hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh3.csv")
-bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg3.csv")
+hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh6.csv")
+bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg6.csv")
+neartaz = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/lakeneartaztable.csv")
+neighborDict = neartaz.groupby('zone17')['nbr_zone17'].apply(list).to_dict()
 
 
 def maz_filter(household, unmatched):
@@ -27,7 +29,6 @@ def maz_filter(household, unmatched):
     if len(bldgoptions) == 0:
         print('no houses')
         unmatched.append(household)
-        print(unmatched)
         return bldgoptions, unmatched
 
         # have not built out unmatched pathway
@@ -36,10 +37,44 @@ def maz_filter(household, unmatched):
 
 
 
-def maz_filter_remainder(unmatched):
-    # not built out yet
+def tazFilter(household):
+    rowhh = hh[hh['household_id'] == household]
+    hhtaz = rowhh.taz.values[0]
+    bldgoptions = bldg[(bldg['zone17'] == hhtaz) & (bldg['residential_units'] > 0)].copy()
 
-    return location_pool
+    if len(bldgoptions) == 0:
+        print('no taz houses')
+        return bldgoptions
+
+    else:
+        return bldgoptions
+
+
+
+def tazNeighborFilter(household):
+    rowhh = hh[hh['household_id'] == household]
+    hhtaz = rowhh.taz.values[0]
+    bldgoptions = bldg[(bldg['zone17'].isin(neighborDict[hhtaz])) & (bldg['residential_units'] > 0)].copy()
+
+    if len(bldgoptions) == 0:
+        print('no taz houses')
+        return bldgoptions
+
+    else:
+        return bldgoptions
+
+
+def pumaFilter(household):
+    rowhh = hh[hh['household_id'] == household]
+    hhpuma = rowhh.puma.values[0]
+    bldgoptions = bldg[(bldg['puma5'] == hhpuma) & (bldg['residential_units'] > 0)].copy()
+
+    if len(bldgoptions) == 0:
+        print('no puma houses')
+        return bldgoptions
+
+    else:
+        return bldgoptions
 
 
 
@@ -147,10 +182,11 @@ def setup(hh):
     #result df will be like household_id, pick order, building id, score
     resultdf = pd.DataFrame(index=hhids, columns=['pickorder','bldgid','score'])
     unmatched = []
+    failed = []
     # randomize once in beginning
     random.shuffle(hhids)
 
-    return resultdf, unmatched, hhids
+    return resultdf, unmatched, failed, hhids
 
 
 def matchHouseholds(hhids, unmatched, bldg, hhdf):
@@ -158,7 +194,6 @@ def matchHouseholds(hhids, unmatched, bldg, hhdf):
 
     for i in hhids:
         pickorder += 1
-        print(pickorder)
 
         # get options in maz
         bldgoptions, unmatched = maz_filter(i, unmatched)
@@ -174,21 +209,79 @@ def matchHouseholds(hhids, unmatched, bldg, hhdf):
             resultdf.loc[i, ['pickorder','bldgid','score']] = [pickorder, selectedID, score]
 
         else:
+            # is this necessary/doing anything?
             hhdf = hhdf.loc[hhdf['household_id'] != i].copy()
+
+    print('maz level done at {}'.format(pickorder))
+
+    return resultdf, unmatched, pickorder
+
+
+def matchRemainder(unmatched, resultdf, pickorder, bldg, hhdf):
+
+    for i in unmatched:
+        pickorder += 1
+
+        # get options in taz
+        bldgoptions = tazFilter(i)
+
+        if len(bldgoptions) > 0:
+            # rate options
+            ratedBldgOptions = rate_pool(i, bldgoptions)
+            # select
+            selectedID, score = assign_building(ratedBldgOptions)
+            # assign and update
+            bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
+
+            resultdf.loc[i, ['pickorder', 'bldgid', 'score']] = [pickorder, selectedID, score]
+
+        else:
+            bldgoptions = tazNeighborFilter(i)
+            print('step2')
+
+            if len(bldgoptions) > 0:
+                # rate options
+                ratedBldgOptions = rate_pool(i, bldgoptions)
+                # select
+                selectedID, score = assign_building(ratedBldgOptions)
+                # assign and update
+                bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
+
+                resultdf.loc[i, ['pickorder', 'bldgid', 'score']] = [pickorder, selectedID, score]
+
+            else:
+                bldgoptions = pumaFilter(i)
+                print('step3')
+
+                if len(bldgoptions) > 0:
+                    # rate options
+                    ratedBldgOptions = rate_pool(i, bldgoptions)
+                    # select
+                    selectedID, score = assign_building(ratedBldgOptions)
+                    # assign and update
+                    bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
+
+                    resultdf.loc[i, ['pickorder', 'bldgid', 'score']] = [pickorder, selectedID, score]
+
+                else:
+                    print('hh cannot be matched')
+                    failed.append(i)
 
     print('all done')
 
-    return resultdf
+    return resultdf, failed
 
 
 
-resultdf, unmatched, hhids = setup(hh)
-finalresult = matchHouseholds(hhids=hhids, unmatched=unmatched, bldg=bldg, hhdf=hh)
+resultdf, unmatched, failed, hhids = setup(hh)
+mazresult, unmatched, pickorder = matchHouseholds(hhids=hhids, unmatched=unmatched, bldg=bldg, hhdf=hh.copy())
+finalresult, failed = matchRemainder(unmatched=unmatched, resultdf=mazresult, pickorder=pickorder, bldg=bldg, hhdf=hh)
+
 
 hhwid = hh.merge(finalresult,left_on='household_id',right_on=finalresult.index)
-allinfo = hhwid.merge(bldg,right_on='building_id',left_on='bldgid')
-allinfo = allinfo[['household_id','maz','taz','puma',
-         'BUS','CONP','BLD','classbldg','residential_units',
+allinfo = hhwid.merge(bldg, right_on='building_id', left_on='bldgid')
+allinfo = allinfo[['household_id','maz','subzone17','taz','zone17','puma',
+         'BUS','CONP','BLD','classbldg', 'building_type_id', 'residential_units',
          'VALP','totalEstValue','land_value','improvement_value',
          'YBL','classyear','year_built',
          'RMSP','BDSP','bedroomsest','residential_sqft',

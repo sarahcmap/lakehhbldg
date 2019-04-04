@@ -10,6 +10,7 @@ description: assign synthetic households to buildings in Lake County
 import pandas as pd
 import random
 import numpy as np
+import time
 
 
 # TEST DATA
@@ -94,11 +95,27 @@ def rate_pool(household, bldgoptions):
     # score type
     bldgoptions.loc[bldgoptions['classbldg'] == hhtype, 'choiceScore'] += 5
 
+    # second choice
+    nextchoice = {
+        1: [2,3],
+        2: [1,3],
+        3: [1,2],
+        4: 5,
+        5: [4,6],
+        6: [5,7],
+        7: [6,8],
+        8: [7,9],
+        9: 8
+    }
+
+    bldgoptions.loc[bldgoptions['classbldg'].isin(nextchoice[hhtype]), 'choiceScore'] += 1
+
     # score year
     bldgoptions.loc[bldgoptions['classyear'] == hhyear, 'choiceScore'] += 2
     bldgoptions.loc[bldgoptions['classyear'] == hhyear + 1, 'choiceScore'] += 1
     bldgoptions.loc[bldgoptions['classyear'] == hhyear - 1, 'choiceScore'] += 1
 
+    # note that max score for non condo, non single family is 7
 
     # score condo
     if hhcond > 0:
@@ -138,6 +155,8 @@ def rate_pool(household, bldgoptions):
                         (bldgoptions['totalEstValue'] < hhvalp + bldgoptions['twentyfiveval']), 'choiceScore'] += 1
 
 
+    # max SF score is 13, if SF business 14, if SF condo 14, if SF business condo 15
+
     return bldgoptions
 
 
@@ -147,12 +166,9 @@ def assign_building(rated_pool):
     rankedPool = rated_pool.sort_values('choiceScore',ascending=False).reset_index()
     # give them random from top...quartile of unique values
     topquartile = np.percentile(rankedPool.choiceScore.unique(), 75)
-    if topquartile >=2:
-        rankedPoolTop = rankedPool[rankedPool['choiceScore'] >= topquartile]
-        selectedID = rankedPoolTop.sample(1).iloc[0]['building_id']
-    else: # if very low, just get the top one
-        topscore = rankedPool.iloc[0]
-        selectedID = topscore['building_id']
+    rankedPoolTop = rankedPool[rankedPool['choiceScore'] >= topquartile]
+    selectedID = rankedPoolTop.sample(1).iloc[0]['building_id']
+
     score = rankedPool[rankedPool['building_id'] == selectedID]['choiceScore'].values[0]
 
     return selectedID, score
@@ -190,6 +206,7 @@ def setup(hh):
 
 
 def matchHouseholds(hhids, unmatched, bldg, hhdf):
+    start = time.time()
     pickorder = 0
 
     for i in hhids:
@@ -201,18 +218,22 @@ def matchHouseholds(hhids, unmatched, bldg, hhdf):
         if len(bldgoptions) > 0:
             # rate options
             ratedBldgOptions = rate_pool(i, bldgoptions)
-            # select
-            selectedID, score = assign_building(ratedBldgOptions)
-            # assign and update
-            bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
+            if ratedBldgOptions.choiceScore.max() == 0:
+                unmatched.append(i)
+            else:
+                # select
+                selectedID, score = assign_building(ratedBldgOptions)
+                # assign and update
+                bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
 
-            resultdf.loc[i, ['pickorder','bldgid','score']] = [pickorder, selectedID, score]
+                resultdf.loc[i, ['pickorder','bldgid','score']] = [pickorder, selectedID, score]
 
         else:
             # is this necessary/doing anything?
             hhdf = hhdf.loc[hhdf['household_id'] != i].copy()
 
-    print('maz level done at {}'.format(pickorder))
+    end = time.time()
+    print('maz level done. Took '.format(end-start))
 
     return resultdf, unmatched, pickorder
 
@@ -237,7 +258,6 @@ def matchRemainder(unmatched, resultdf, pickorder, bldg, hhdf):
 
         else:
             bldgoptions = tazNeighborFilter(i)
-            print('step2')
 
             if len(bldgoptions) > 0:
                 # rate options
@@ -251,7 +271,6 @@ def matchRemainder(unmatched, resultdf, pickorder, bldg, hhdf):
 
             else:
                 bldgoptions = pumaFilter(i)
-                print('step3')
 
                 if len(bldgoptions) > 0:
                     # rate options

@@ -4,8 +4,8 @@
 """extra info
 """
 import pandas as pd
-bldgs = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/lakebuildingsextraatts_2.csv")
-hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/current/lakehhextraatts.csv")
+bldgs = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/current/lakebuildingsextraatts_2.csv")
+hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/lakehh_v3.csv")
 
 maz_selections = [10254, 10259]
 taz_selections = [2327, 2350, 2353]
@@ -21,4 +21,4 @@ bldgstest2 = bldgs[bldgs['puma5'] == puma]
 hhtest2 = hh[hh['puma'] == puma]
 
 bldgstest2.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg6.csv",index=False)
-hhtest2.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh6.csv", index=False)
+hhtest2.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh6_3.csv", index=False)

@@ -14,9 +14,10 @@ import time
 
 
 # TEST DATA
-hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh6.csv")
+hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh6_3.csv")
+hh = hh[hh['BLD'] != 10]    # exclude households not in buildings (boat, rv, van, etc)
 bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg6.csv")
-neartaz = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/lakeneartaztable.csv")
+neartaz = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/current/lakeneartaztable.csv")
 neighborDict = neartaz.groupby('zone17')['nbr_zone17'].apply(list).to_dict()
 
 
@@ -58,7 +59,7 @@ def tazNeighborFilter(household):
     bldgoptions = bldg[(bldg['zone17'].isin(neighborDict[hhtaz])) & (bldg['residential_units'] > 0)].copy()
 
     if len(bldgoptions) == 0:
-        print('no taz houses')
+        print('no neighbor taz houses')
         return bldgoptions
 
     else:
@@ -100,15 +101,15 @@ def rate_pool(household, bldgoptions):
         1: [2,3],
         2: [1,3],
         3: [1,2],
-        4: 5,
+        4: [5],
         5: [4,6],
         6: [5,7],
         7: [6,8],
         8: [7,9],
-        9: 8
+        9: [8]
     }
 
-    bldgoptions.loc[bldgoptions['classbldg'].isin(nextchoice[hhtype]), 'choiceScore'] += 1
+    bldgoptions.loc[bldgoptions['classbldg'].isin(nextchoice[hhtype]), 'choiceScore'] += 2
 
     # score year
     bldgoptions.loc[bldgoptions['classyear'] == hhyear, 'choiceScore'] += 2
@@ -218,22 +219,19 @@ def matchHouseholds(hhids, unmatched, bldg, hhdf):
         if len(bldgoptions) > 0:
             # rate options
             ratedBldgOptions = rate_pool(i, bldgoptions)
-            if ratedBldgOptions.choiceScore.max() == 0:
-                unmatched.append(i)
-            else:
-                # select
-                selectedID, score = assign_building(ratedBldgOptions)
-                # assign and update
-                bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
+            # select
+            selectedID, score = assign_building(ratedBldgOptions)
+            # assign and update
+            bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
 
-                resultdf.loc[i, ['pickorder','bldgid','score']] = [pickorder, selectedID, score]
+            resultdf.loc[i, ['pickorder','bldgid','score']] = [pickorder, selectedID, score]
 
         else:
             # is this necessary/doing anything?
             hhdf = hhdf.loc[hhdf['household_id'] != i].copy()
 
     end = time.time()
-    print('maz level done. Took '.format(end-start))
+    print('maz level done. Took {} seconds'.format(end-start))
 
     return resultdf, unmatched, pickorder
 
@@ -306,3 +304,8 @@ allinfo = allinfo[['household_id','maz','subzone17','taz','zone17','puma',
          'RMSP','BDSP','bedroomsest','residential_sqft',
          'ACR','classacre','acres',
          'pickorder','bldgid','score']]
+
+allinfo.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r6.csv", index=False)
+dfnotmatched = allinfo[allinfo['BLD'] != allinfo['classbldg']]
+a = dfnotmatched.groupby(['subzone17','BLD']).classbldg.value_counts().rename('count').reset_index()
+a.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r6_type_mismatch.csv", header=['maz','originaltype','newtype','count'], index=False)

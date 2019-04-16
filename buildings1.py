@@ -4,6 +4,7 @@
 """
 author: sbuchhorn
 date: 28 Mar 2019
+updated: 11 April 2019
 description: assign synthetic households to buildings in Lake County
 """
 
@@ -17,6 +18,8 @@ import time
 hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh6_3.csv")
 hh = hh[hh['BLD'] != 10]    # exclude households not in buildings (boat, rv, van, etc)
 bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg6.csv")
+bldg['remaining_residential_units'] = bldg['residential_units']
+
 neartaz = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/current/lakeneartaztable.csv")
 neighborDict = neartaz.groupby('zone17')['nbr_zone17'].apply(list).to_dict()
 
@@ -26,14 +29,13 @@ def maz_filter(household, unmatched):
 
     rowhh = hh[hh['household_id'] == household]
     hhmaz = rowhh.maz.values[0]
-    bldgoptions = bldg[(bldg['subzone17'] == hhmaz) & (bldg['residential_units'] > 0)].copy()
+    bldgoptions = bldg[(bldg['subzone17'] == hhmaz) & (bldg['remaining_residential_units'] > 0)].copy()
 
     if len(bldgoptions) == 0:
         print('no houses')
         unmatched.append(household)
         return bldgoptions, unmatched
 
-        # have not built out unmatched pathway
     else:
         return bldgoptions, unmatched
 
@@ -42,7 +44,7 @@ def maz_filter(household, unmatched):
 def tazFilter(household):
     rowhh = hh[hh['household_id'] == household]
     hhtaz = rowhh.taz.values[0]
-    bldgoptions = bldg[(bldg['zone17'] == hhtaz) & (bldg['residential_units'] > 0)].copy()
+    bldgoptions = bldg[(bldg['zone17'] == hhtaz) & (bldg['remaining_residential_units'] > 0)].copy()
 
     if len(bldgoptions) == 0:
         print('no taz houses')
@@ -56,7 +58,7 @@ def tazFilter(household):
 def tazNeighborFilter(household):
     rowhh = hh[hh['household_id'] == household]
     hhtaz = rowhh.taz.values[0]
-    bldgoptions = bldg[(bldg['zone17'].isin(neighborDict[hhtaz])) & (bldg['residential_units'] > 0)].copy()
+    bldgoptions = bldg[(bldg['zone17'].isin(neighborDict[hhtaz])) & (bldg['remaining_residential_units'] > 0)].copy()
 
     if len(bldgoptions) == 0:
         print('no neighbor taz houses')
@@ -69,7 +71,7 @@ def tazNeighborFilter(household):
 def pumaFilter(household):
     rowhh = hh[hh['household_id'] == household]
     hhpuma = rowhh.puma.values[0]
-    bldgoptions = bldg[(bldg['puma5'] == hhpuma) & (bldg['residential_units'] > 0)].copy()
+    bldgoptions = bldg[(bldg['puma5'] == hhpuma) & (bldg['remaining_residential_units'] > 0)].copy()
 
     if len(bldgoptions) == 0:
         print('no puma houses')
@@ -87,14 +89,19 @@ def rate_pool(household, bldgoptions):
 
     hhtype = rowhh.BLD.values[0]
     hhyear = rowhh.YBL.values[0]
-    hhbus = rowhh.BUS.values[0]
-    hhbroom = rowhh.BDSP.values[0]
-    hhvalp = rowhh.VALP.values[0]
     hhcond = rowhh.CONP.values[0]
+
+    hhbus = rowhh.BUS.values[0]
     hhacre = rowhh.ACR.values[0]
 
+    hhbroom = rowhh.BDSP.values[0]
+    if hhbroom >= 5:
+        # the sqft estimation only goes up to 4, so let it get points for matching to 4
+        hhbroom = 5
+    hhvalp = rowhh.VALP.values[0]
+
     # score type
-    bldgoptions.loc[bldgoptions['classbldg'] == hhtype, 'choiceScore'] += 5
+    bldgoptions.loc[bldgoptions['classbldg'] == hhtype, 'choiceScore'] += 10
 
     # second choice
     nextchoice = {
@@ -109,7 +116,21 @@ def rate_pool(household, bldgoptions):
         9: [8]
     }
 
+    # third choice
+    thirdchoice = {
+        1: [4,5],
+        2: [4,5],
+        3: [4,5],
+        4: [1,2,3,6],
+        5: [1,2,3,7],
+        6: [4,8],
+        7: [5,9],
+        8: [6],
+        9: [7]
+    }
+
     bldgoptions.loc[bldgoptions['classbldg'].isin(nextchoice[hhtype]), 'choiceScore'] += 2
+    bldgoptions.loc[bldgoptions['classbldg'].isin(thirdchoice[hhtype]), 'choiceScore'] += 1
 
     # score year
     bldgoptions.loc[bldgoptions['classyear'] == hhyear, 'choiceScore'] += 2
@@ -127,52 +148,58 @@ def rate_pool(household, bldgoptions):
         # business
         if hhbus == 1.0:
             bldgoptions.loc[bldgoptions['building_type_id'].isin([2130,2110,2120]), 'choiceScore'] += 1
+        # lot size
+        bldgoptions.loc[bldgoptions['classacre'] == hhacre, 'choiceScore'] += 1
+
         # bedrooms (estimated for one unit buildings only)
-        if hhbroom >= 5:
-            # the sqft estimation only goes up to 4, so let it get points for matching to 4
-            hhbroom = 5
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
                         (bldgoptions['bedroomsest'] == hhbroom), 'choiceScore'] += 2
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
                         (bldgoptions['bedroomsest'] == hhbroom + 1), 'choiceScore'] += 1
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
                         (bldgoptions['bedroomsest'] == hhbroom - 1), 'choiceScore'] += 1
-        # lot size
-        bldgoptions.loc[bldgoptions['classacre'] == hhacre, 'choiceScore'] += 2
         # value (for one unit buildings only)
-        bldgoptions['tenval'] = bldgoptions['totalEstValue'] * 0.1
-        bldgoptions['twentyfiveval'] = bldgoptions['totalEstValue'] * 0.25
-        # +/- 10%
+        bldgoptions['twentyval'] = bldgoptions['totalEstValue'] * 0.2
+        bldgoptions['fortyval'] = bldgoptions['totalEstValue'] * 0.4
+        # +/- 20%
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
-                        (hhvalp - bldgoptions['tenval'] < bldgoptions['totalEstValue']) &
-                        (bldgoptions['totalEstValue'] < hhvalp + bldgoptions['tenval']), 'choiceScore'] += 2
-        # from 10-25% lower
+                        (hhvalp - bldgoptions['twentyval'] < bldgoptions['totalEstValue']) &
+                        (bldgoptions['totalEstValue'] < hhvalp + bldgoptions['twentyval']), 'choiceScore'] += 2
+        # from 20-40% lower
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
-                        (hhvalp - bldgoptions['twentyfiveval'] < bldgoptions['totalEstValue']) &
-                        (bldgoptions['totalEstValue'] < hhvalp - bldgoptions['tenval']), 'choiceScore'] += 1
-        # from 10-25% higher
+                        (hhvalp - bldgoptions['fortyval'] < bldgoptions['totalEstValue']) &
+                        (bldgoptions['totalEstValue'] < hhvalp - bldgoptions['twentyval']), 'choiceScore'] += 1
+        # from 20-40% higher
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
-                        (hhvalp + bldgoptions['tenval'] < bldgoptions['totalEstValue']) &
-                        (bldgoptions['totalEstValue'] < hhvalp + bldgoptions['twentyfiveval']), 'choiceScore'] += 1
+                        (hhvalp + bldgoptions['twentyval'] < bldgoptions['totalEstValue']) &
+                        (bldgoptions['totalEstValue'] < hhvalp + bldgoptions['fortyval']), 'choiceScore'] += 1
 
 
-    # max SF score is 13, if SF business 14, if SF condo 14, if SF business condo 15
+    # max SF score is 12, if SF business 13, if SF condo 13, if SF business condo 14
 
     return bldgoptions
 
 
 
 def assign_building(rated_pool):
-    # make a selection given the weights
+    # sort values by score
     rankedPool = rated_pool.sort_values('choiceScore',ascending=False).reset_index()
-    # give them random from top...quartile of unique values
+    topscore = rankedPool.iloc[0]['choiceScore']  # for QA/QC
+    # get list of unique scores and get top quartile cutoff
     topquartile = np.percentile(rankedPool.choiceScore.unique(), 75)
+    # take only rows from df where score is greater or equal to this cutoff
     rankedPoolTop = rankedPool[rankedPool['choiceScore'] >= topquartile]
-    selectedID = rankedPoolTop.sample(1).iloc[0]['building_id']
+    # get list of scores for weights
+    toplist = [x for x in rankedPoolTop['choiceScore']]
+    # choose random weighted by the score, unless the only choice is zero
+    try:
+        selectedID = rankedPoolTop.sample(1, weights=toplist).iloc[0]['building_id']
+    except ValueError:
+        selectedID = rankedPoolTop.sample(1).iloc[0]['building_id']
 
     score = rankedPool[rankedPool['building_id'] == selectedID]['choiceScore'].values[0]
 
-    return selectedID, score
+    return selectedID, score, topscore
 
 
 def removeAndUpdate(buildingdf, hhdf, hhID, bldgID):
@@ -181,14 +208,14 @@ def removeAndUpdate(buildingdf, hhdf, hhID, bldgID):
     hhdf = hhdf.loc[hhdf['household_id'] != hhID].copy()
 
     try:
-        units = buildingdf[buildingdf['building_id'] == bldgID]['residential_units'].values[0]
+        units = buildingdf[buildingdf['building_id'] == bldgID]['remaining_residential_units'].values[0]
     except IndexError:
         units = 0
 
     if units == 0:
         buildingdf = buildingdf.loc[buildingdf['building_id'] != bldgID].copy()
     else:
-        buildingdf.loc[buildingdf['building_id'] == bldgID, 'residential_units'] = units - 1
+        buildingdf.loc[buildingdf['building_id'] == bldgID, 'remaining_residential_units'] = units - 1
 
     return buildingdf, hhdf
 
@@ -197,7 +224,7 @@ def removeAndUpdate(buildingdf, hhdf, hhID, bldgID):
 def setup(hh):
     hhids = [x for x in hh.household_id]
     #result df will be like household_id, pick order, building id, score
-    resultdf = pd.DataFrame(index=hhids, columns=['pickorder','bldgid','score'])
+    resultdf = pd.DataFrame(index=hhids, columns=['pickorder','bldgid','score','topscore'])
     unmatched = []
     failed = []
     # randomize once in beginning
@@ -220,11 +247,11 @@ def matchHouseholds(hhids, unmatched, bldg, hhdf):
             # rate options
             ratedBldgOptions = rate_pool(i, bldgoptions)
             # select
-            selectedID, score = assign_building(ratedBldgOptions)
+            selectedID, score, topscore = assign_building(ratedBldgOptions)
             # assign and update
             bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
 
-            resultdf.loc[i, ['pickorder','bldgid','score']] = [pickorder, selectedID, score]
+            resultdf.loc[i, ['pickorder','bldgid','score','topscore']] = [pickorder, selectedID, score, topscore]
 
         else:
             # is this necessary/doing anything?
@@ -248,11 +275,11 @@ def matchRemainder(unmatched, resultdf, pickorder, bldg, hhdf):
             # rate options
             ratedBldgOptions = rate_pool(i, bldgoptions)
             # select
-            selectedID, score = assign_building(ratedBldgOptions)
+            selectedID, score, topscore = assign_building(ratedBldgOptions)
             # assign and update
             bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
 
-            resultdf.loc[i, ['pickorder', 'bldgid', 'score']] = [pickorder, selectedID, score]
+            resultdf.loc[i, ['pickorder', 'bldgid', 'score', 'topscore']] = [pickorder, selectedID, score, topscore]
 
         else:
             bldgoptions = tazNeighborFilter(i)
@@ -261,11 +288,11 @@ def matchRemainder(unmatched, resultdf, pickorder, bldg, hhdf):
                 # rate options
                 ratedBldgOptions = rate_pool(i, bldgoptions)
                 # select
-                selectedID, score = assign_building(ratedBldgOptions)
+                selectedID, score, topscore = assign_building(ratedBldgOptions)
                 # assign and update
                 bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
 
-                resultdf.loc[i, ['pickorder', 'bldgid', 'score']] = [pickorder, selectedID, score]
+                resultdf.loc[i, ['pickorder', 'bldgid', 'score','topscore']] = [pickorder, selectedID, score, topscore]
 
             else:
                 bldgoptions = pumaFilter(i)
@@ -274,11 +301,11 @@ def matchRemainder(unmatched, resultdf, pickorder, bldg, hhdf):
                     # rate options
                     ratedBldgOptions = rate_pool(i, bldgoptions)
                     # select
-                    selectedID, score = assign_building(ratedBldgOptions)
+                    selectedID, score, topscore = assign_building(ratedBldgOptions)
                     # assign and update
                     bldg, hhdf = removeAndUpdate(bldg, hhdf, i, selectedID)
 
-                    resultdf.loc[i, ['pickorder', 'bldgid', 'score']] = [pickorder, selectedID, score]
+                    resultdf.loc[i, ['pickorder', 'bldgid', 'score', 'topscore']] = [pickorder, selectedID, score, topscore]
 
                 else:
                     print('hh cannot be matched')
@@ -298,14 +325,14 @@ finalresult, failed = matchRemainder(unmatched=unmatched, resultdf=mazresult, pi
 hhwid = hh.merge(finalresult,left_on='household_id',right_on=finalresult.index)
 allinfo = hhwid.merge(bldg, right_on='building_id', left_on='bldgid')
 allinfo = allinfo[['household_id','maz','subzone17','taz','zone17','puma',
-         'BUS','CONP','BLD','classbldg', 'building_type_id', 'residential_units',
+         'BUS','CONP','BLD','classbldg', 'building_type_id', 'remaining_residential_units','residential_units',
          'VALP','totalEstValue','land_value','improvement_value',
          'YBL','classyear','year_built',
          'RMSP','BDSP','bedroomsest','residential_sqft',
          'ACR','classacre','acres',
-         'pickorder','bldgid','score']]
+         'pickorder','bldgid','score','topscore']]
 
-allinfo.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r6.csv", index=False)
+allinfo.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r14.csv", index=False)
 dfnotmatched = allinfo[allinfo['BLD'] != allinfo['classbldg']]
 a = dfnotmatched.groupby(['subzone17','BLD']).classbldg.value_counts().rename('count').reset_index()
-a.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r6_type_mismatch.csv", header=['maz','originaltype','newtype','count'], index=False)
+a.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r14_type_mismatch.csv", header=['maz','originaltype','newtype','count'], index=False)

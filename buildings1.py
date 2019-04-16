@@ -15,9 +15,9 @@ import time
 
 
 # TEST DATA
-hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/current/lakehh_v3.csv")
+hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh6_3.csv")
 hh = hh[hh['BLD'] != 10]    # exclude households not in buildings (boat, rv, van, etc)
-bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/current/lakebuildingsextraatts_2.csv")
+bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg6.csv")
 bldg['remaining_residential_units'] = bldg['residential_units']
 
 neartaz = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/current/lakeneartaztable.csv")
@@ -89,14 +89,19 @@ def rate_pool(household, bldgoptions):
 
     hhtype = rowhh.BLD.values[0]
     hhyear = rowhh.YBL.values[0]
-    hhbus = rowhh.BUS.values[0]
-    hhbroom = rowhh.BDSP.values[0]
-    hhvalp = rowhh.VALP.values[0]
     hhcond = rowhh.CONP.values[0]
+
+    hhbus = rowhh.BUS.values[0]
     hhacre = rowhh.ACR.values[0]
 
+    hhbroom = rowhh.BDSP.values[0]
+    if hhbroom >= 5:
+        # the sqft estimation only goes up to 4, so let it get points for matching to 4
+        hhbroom = 5
+    hhvalp = rowhh.VALP.values[0]
+
     # score type
-    bldgoptions.loc[bldgoptions['classbldg'] == hhtype, 'choiceScore'] += 5
+    bldgoptions.loc[bldgoptions['classbldg'] == hhtype, 'choiceScore'] += 10
 
     # second choice
     nextchoice = {
@@ -143,18 +148,16 @@ def rate_pool(household, bldgoptions):
         # business
         if hhbus == 1.0:
             bldgoptions.loc[bldgoptions['building_type_id'].isin([2130,2110,2120]), 'choiceScore'] += 1
+        # lot size
+        bldgoptions.loc[bldgoptions['classacre'] == hhacre, 'choiceScore'] += 1
+
         # bedrooms (estimated for one unit buildings only)
-        if hhbroom >= 5:
-            # the sqft estimation only goes up to 4, so let it get points for matching to 4
-            hhbroom = 5
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
                         (bldgoptions['bedroomsest'] == hhbroom), 'choiceScore'] += 2
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
                         (bldgoptions['bedroomsest'] == hhbroom + 1), 'choiceScore'] += 1
         bldgoptions.loc[(bldgoptions['residential_units'] == 1) &
                         (bldgoptions['bedroomsest'] == hhbroom - 1), 'choiceScore'] += 1
-        # lot size
-        bldgoptions.loc[bldgoptions['classacre'] == hhacre, 'choiceScore'] += 1
         # value (for one unit buildings only)
         bldgoptions['twentyval'] = bldgoptions['totalEstValue'] * 0.2
         bldgoptions['fortyval'] = bldgoptions['totalEstValue'] * 0.4
@@ -179,13 +182,20 @@ def rate_pool(household, bldgoptions):
 
 
 def assign_building(rated_pool):
-    # make a selection given the weights
+    # sort values by score
     rankedPool = rated_pool.sort_values('choiceScore',ascending=False).reset_index()
-    # give them random from top...quartile of unique values
     topscore = rankedPool.iloc[0]['choiceScore']  # for QA/QC
+    # get list of unique scores and get top quartile cutoff
     topquartile = np.percentile(rankedPool.choiceScore.unique(), 75)
+    # take only rows from df where score is greater or equal to this cutoff
     rankedPoolTop = rankedPool[rankedPool['choiceScore'] >= topquartile]
-    selectedID = rankedPoolTop.sample(1).iloc[0]['building_id']
+    # get list of scores for weights
+    toplist = [x for x in rankedPoolTop['choiceScore']]
+    # choose random weighted by the score, unless the only choice is zero
+    try:
+        selectedID = rankedPoolTop.sample(1, weights=toplist).iloc[0]['building_id']
+    except ValueError:
+        selectedID = rankedPoolTop.sample(1).iloc[0]['building_id']
 
     score = rankedPool[rankedPool['building_id'] == selectedID]['choiceScore'].values[0]
 
@@ -322,7 +332,7 @@ allinfo = allinfo[['household_id','maz','subzone17','taz','zone17','puma',
          'ACR','classacre','acres',
          'pickorder','bldgid','score','topscore']]
 
-allinfo.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r9.csv", index=False)
+allinfo.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r14.csv", index=False)
 dfnotmatched = allinfo[allinfo['BLD'] != allinfo['classbldg']]
 a = dfnotmatched.groupby(['subzone17','BLD']).classbldg.value_counts().rename('count').reset_index()
-a.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r9_type_mismatch.csv", header=['maz','originaltype','newtype','count'], index=False)
+a.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r14_type_mismatch.csv", header=['maz','originaltype','newtype','count'], index=False)

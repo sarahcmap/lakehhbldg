@@ -4,7 +4,7 @@
 """
 author: sbuchhorn
 date: 28 Mar 2019
-updated: 11 April 2019
+updated: 16 April 2019
 description: assign synthetic households to buildings in Lake County
 """
 
@@ -15,9 +15,9 @@ import time
 
 
 # TEST DATA
-hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/hh6_3.csv")
+hh = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/current/lakehh_v3.csv")
 hh = hh[hh['BLD'] != 10]    # exclude households not in buildings (boat, rv, van, etc)
-bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/babydata/bldg6.csv")
+bldg = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/current/lakebuildingsextraatts_2.csv")
 bldg['remaining_residential_units'] = bldg['residential_units']
 
 neartaz = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/current/lakeneartaztable.csv")
@@ -137,7 +137,7 @@ def rate_pool(household, bldgoptions):
     bldgoptions.loc[bldgoptions['classyear'] == hhyear + 1, 'choiceScore'] += 1
     bldgoptions.loc[bldgoptions['classyear'] == hhyear - 1, 'choiceScore'] += 1
 
-    # note that max score for non condo, non single family is 7
+    # note that max score for non condo, non single family is 12
 
     # score condo
     if hhcond > 0:
@@ -175,7 +175,7 @@ def rate_pool(household, bldgoptions):
                         (bldgoptions['totalEstValue'] < hhvalp + bldgoptions['fortyval']), 'choiceScore'] += 1
 
 
-    # max SF score is 12, if SF business 13, if SF condo 13, if SF business condo 14
+    # max SF score is 17, if SF business 18, if SF condo 18, if SF business condo 19
 
     return bldgoptions
 
@@ -332,7 +332,7 @@ allinfo = allinfo[['household_id','maz','subzone17','taz','zone17','puma',
          'ACR','classacre','acres',
          'pickorder','bldgid','score','topscore']]
 
-allinfo.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r14.csv", index=False)
+allinfo.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r15.csv", index=False)
 dfnotmatched = allinfo[allinfo['BLD'] != allinfo['classbldg']]
 a = dfnotmatched.groupby(['subzone17','BLD']).classbldg.value_counts().rename('count').reset_index()
-a.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r14_type_mismatch.csv", header=['maz','originaltype','newtype','count'], index=False)
+a.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/results/r15_type_mismatch.csv", header=['maz','originaltype','newtype','count'], index=False)

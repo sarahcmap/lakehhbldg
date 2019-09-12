@@ -16,22 +16,22 @@ import sys
 import os
 
 # end with slash!
-outputdir = "T:/buchhorn/buildingtesting/test3/"
+outputdir = "T:/buchhorn/buildingtesting/test4b/"
 
 # check that output dirs are ok
 if not os.path.exists(outputdir):
     sys.stderr.write("output folder doesn't exist! \n fix before continuing")
 
 # TEST DATA
-fullhh = pd.read_csv("T:/buchhorn/buildingtesting/hhtest3.csv")
+fullhh = pd.read_csv("T:/buchhorn/buildingtesting/hhtest4.csv")
 fullhh = fullhh[fullhh['BLD'] != 10]    # exclude households not in buildings (boat, rv, van, etc)
-fullbldg = pd.read_csv("T:/buchhorn/buildingtesting/bldgtest3.csv")
+fullbldg = pd.read_csv("T:/buchhorn/buildingtesting/bldgtest4.csv")
 fullbldg['remaining_residential_units'] = fullbldg['residential_units']
 
 neartaz = pd.read_csv("T:/buchhorn/buildingtesting/sz17neighbor.csv")
 neighborDict = neartaz.groupby('zone17')['nbr_zone17'].apply(list).to_dict()
 
-puma = set([x for x in fullhh['puma']])
+puma = list(set([x for x in fullhh['puma']]))
 random.shuffle(puma)
 
 
@@ -293,30 +293,26 @@ for i in puma:
 
     resultdf, unmatched, failed, hhids = setup(hh)
     mazresult, unmatched, pickorder = matchHouseholds(hhids=hhids, unmatched=unmatched, bldg=bldg, hhdf=hh.copy())
-    finalresult, failed = matchRemainder(unmatched=unmatched, resultdf=mazresult, pickorder=pickorder, bldg=bldg, hhdf=hh)
+    finalresult, failed = matchRemainder(unmatched=unmatched, resultdf=mazresult, pickorder=pickorder, bldg=bldg,
+                                         hhdf=hh)
 
+    # saving files and summaries
     hh.to_csv(outputdir + "hh_{}.csv".format(i))
     finalresult.to_csv(outputdir + "finalresult_{}.csv".format(i))
     bldg.to_csv(outputdir + "bldg_{}.csv".format(i))
     seriesfailed = pd.Series(failed)
-    seriesfailed.to_csv(outputdir + "kanefailed_{}.csv".format(i))
+    seriesfailed.to_csv(outputdir + "failed_{}.csv".format(i))
 
+    hhwid = hh.merge(finalresult,left_on='household_id',right_on=finalresult.index)
+    allinfo = hhwid.merge(bldg, right_on='building_id', left_on='bldgid')
+    allinfo = allinfo[['household_id','maz','subzone17','taz','zone17','puma',
+             'BUS','CONP','BLD','classbldg', 'building_type_id', 'remaining_residential_units','residential_units',
+             'VALP','totalEstValue','improvement_value',
+             'YBL2','classyear','year_built',
+                       #land_value
+             'RMSP','BDSP2','bedroomsest','residential_sqft',
+             'ACR','classacre','acres',
+             'pickorder','bldgid','score','topscore']]
 
+    allinfo.to_csv(outputdir + "allinfo_{}.csv".format(i), index=False)
 
-    #
-    # hhwid = hh.merge(finalresult,left_on='household_id',right_on=finalresult.index)
-    # allinfo = hhwid.merge(bldg, right_on='building_id', left_on='bldgid')
-    # allinfo = allinfo[['household_id','maz','subzone17','taz','zone17','puma',
-    #          'BUS','CONP','BLD','classbldg', 'building_type_id', 'remaining_residential_units','residential_units',
-    #          'VALP','totalEstValue','improvement_value',
-    #          'YBL2','classyear','year_built', #land_value
-    #          'RMSP','BDSP2','bedroomsest','residential_sqft',
-    #          'ACR','classacre','acres',
-    #          'pickorder','bldgid','score','topscore']]
-    #
-    # allinfo.to_csv(outputdir + "r_{}.csv".format(i), index=False)
-    # dfnotmatched = allinfo[allinfo['BLD'] != allinfo['classbldg']]
-    # a = dfnotmatched.groupby(['subzone17','BLD']).classbldg.value_counts().rename('count').reset_index()
-    # a.to_csv(outputdir + "mismatch_{}.csv".format(i), header=['maz','originaltype','newtype','count'], index=False)
-    # seriesfailed = pd.Series(failed)
-    # seriesfailed.to_csv(outputdir + "failed_{}.csv".format(i))

@@ -303,7 +303,8 @@ for i in puma:
     seriesfailed = pd.Series(failed)
     seriesfailed.to_csv(outputdir + "failed_{}.csv".format(i))
 
-    hhwid = hh.merge(finalresult,left_on='household_id',right_on=finalresult.index)
+    finalresult['hhid'] = finalresult.index
+    hhwid = hh.merge(finalresult,left_on='household_id',right_on='hhid')
     allinfo = hhwid.merge(bldg, right_on='building_id', left_on='bldgid')
     allinfo = allinfo[['household_id','maz','subzone17','taz','zone17','puma',
              'BUS','CONP','BLD','classbldg', 'building_type_id', 'remaining_residential_units','residential_units',

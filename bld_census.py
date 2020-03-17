@@ -2,7 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-Get BLD data from 2008-2012 ACS
+Get BLD data from 2008-2012 ACS, or our own building file
+
+When developing based on buildings file, note the assumption that households are
+distributed as the household building types are distributed
 """
 from census import Census
 import pandas as pd
@@ -33,9 +36,30 @@ for state_fips in ('17', '18', '55'):
                            'B25024_008E', # 20 to 49
                            'B25024_009E', # 50+
                            'B25024_010E', # mobile home
-                           'B25024_011E'], geo={'for': 'tract:*', 'in': 'state:{}'.format(state_fips)}) # boat, rv, van, etc.
+                           'B25024_011E'], # boat, rv, van, etc.
+                           geo={'for': 'tract:*', 'in': 'state:{}'.format(state_fips)})
     df = pd.DataFrame(unitslist)
-    df.to_csv("C:/Users/sbuchhorn/Desktop/df{}_units.csv".format(state_fips))
+    df.to_csv('/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/acs_bld_data/df{}_units.csv'.format(state_fips))
+
+# now get pct for each category (just swapping out state code in pathways)
+dfil = pd.read_csv('/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/acs_bld_data/df55_units.csv')
+dfil['pct1'] = dfil['B25024_002E'] / dfil['B25024_001E']
+dfil['pct2'] = dfil['B25024_003E'] / dfil['B25024_001E']
+dfil['pct3'] = dfil['B25024_004E'] / dfil['B25024_001E']
+dfil['pct4'] = dfil['B25024_005E'] / dfil['B25024_001E']
+dfil['pct5'] = dfil['B25024_006E'] / dfil['B25024_001E']
+dfil['pct6'] = dfil['B25024_007E'] / dfil['B25024_001E']
+dfil['pct7'] = dfil['B25024_008E'] / dfil['B25024_001E']
+dfil['pct8'] = dfil['B25024_009E'] / dfil['B25024_001E']
+dfil['pct9'] = dfil['B25024_010E'] / dfil['B25024_001E']
+dfil['pct10'] = dfil['B25024_011E'] / dfil['B25024_001E']
+
+def makejoinid(x):
+    return str(x['state']) + str(x['county']).zfill(3) + str(x['tract']).zfill(5)
+
+dfil['joinid'] = dfil.apply(makejoinid, axis=1)
+dfil.to_csv('/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/acs_bld_data/df55_pcts.csv')
+
 
 # joing this data to block centroids
 """
@@ -212,7 +236,7 @@ a['eightn'] = a[8] * a['eightF']
 a['ninen'] = a[9] * a['nineF']
 a['onen'] = a[1] * a['oneF']
 # we need different treatment for zero, because the zero coded buildings are
-# just unclassified buildings,whereas the zero coded from ACS (#10) are boat, RV, van, etc.
+# just unclassified buildings, whereas the zero coded from ACS (#10) are boat, RV, van, etc.
 # maybe we just take the tract distribution applied to maz and toss it in at the end, then let program
 # sort it out?
 

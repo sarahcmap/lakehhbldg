@@ -5,6 +5,8 @@ Last Update: 9 April 2019
 This file prepares the output of the 1_fix_income process (with household ids and serialno column from 2_hh_nums) for
 urbansim and travel modeling.  or, it takes the direct output from the popsim run
 
+The same thing (direct from popsim version) is in 3_urbansim_prep.ipynb
+
 """
 import pandas as pd
 

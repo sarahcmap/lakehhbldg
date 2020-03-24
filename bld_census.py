@@ -10,7 +10,6 @@ distributed as the household building types are distributed
 from census import Census
 import pandas as pd
 
-
 YEAR = 2012  # Final year of 5-year ACS dataset (e.g. 2012 for 2008-2012 data)
 
 # didn't use this, but here are tracts in region
@@ -83,7 +82,7 @@ PBHI_FC <- arc.open("S:/Projects/LandUseModel/datadev/popsyn/controls_PBHI2010_z
 
 """
 ######## bld controls from ACS tracts
-internal = pd.read_csv("D:/2010lakecountypop/bld_control/pbhi2010subzones17.csv")
+internal = pd.read_csv("Users/sarahbuchhorn/Desktop/cmap_wfh/Desktop%Copy/bld_control/pbhi2010subzones17.csv")
 internal_col = internal[['Tract','HH_FIN','subzone17','zone17']]
 
 # this is the ACS file with BLD category distribution for each category (number in category / total for tract)
@@ -152,7 +151,7 @@ b.to_csv("D:/2010lakecountypop/maz_ext_bldg_controls2.csv")  # this is the tract
 # where there is building data, use that instead
 
 ######## blg controls from building file
-buildings = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/lake/current/lakebuildingsextraatts_2.csv")
+buildings = pd.read_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/counties/kane/kanebuildingsextraatts_v0.csv")
 buildings = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/dupage/dupagebuildingsextraatts.csv")
 buildings = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/cook/cookbuildingsextraatts.csv")
 buildings = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/will/willbuildingsextraatts.csv")
@@ -163,7 +162,7 @@ buildings = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/mchenry/mc
 # summary of residential units by maz
 buildings_types = buildings.groupby(['subzone17','classbldg']).agg({'residential_units':'sum'}).unstack().fillna(0).reset_index()
 buildings_types.columns = buildings_types.columns.droplevel()
-buildings_types.rename({'':'maz'}, axis=1, inplace=True)
+buildings_types.rename_axis({'':'maz'}, axis=1, inplace=True)
 buildings_types['total'] = buildings_types.iloc[:, 1:11].sum(axis=1)
 # this (below) is the percentage of total in each category (from buildings file)
 buildings_types.iloc[:,1:10] # check this is what you want (if there are no group0 this will be different)
@@ -173,24 +172,27 @@ buildings_types[0].value_counts()   # percent of buildings that are 0
 buildings_types.to_clipboard()
 
 # great!  now bring in the tract
-internalmaztract = pd.read_csv("D:/2010lakecountypop/bld_control/internal_maz_tract.csv")
+internalmaztract = pd.read_csv('/Users/sarahbuchhorn/Desktop/cmap_wfh/Desktop Copy/bld_control/internal_maz_tract.csv')
 x = buildings_types.merge(internalmaztract[['subzone17', 'Tract']], left_on='maz', right_on='subzone17')
 # bring in HH counts
-mazhh = pd.read_csv("D:/2010lakecountypop/bld_control/bldjustfromtract.csv")
-mazhh['HHno0'] = mazhh['HH'] - mazhh['num11']  # count without the people not in buildings (group 10 in ACS/11 here)
-buildings_types = x.merge(mazhh[['MAZ','HH','HHno0']], left_on='subzone17', right_on='MAZ')
+# this one below has a total that is slightly different from my futurepop 2010 total
+# mazhh = pd.read_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/Desktop Copy/bld_control/bldjustfromtract.csv")
+mazhh = pd.read_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/popsim25/data/control_totals_maz.csv")
+mazhhkane = mazhh[(mazhh['MAZ'] >= 5253) & (mazhh['MAZ'] <= 7406)]
+mazhhkane['HHno0'] = mazhhkane['HH'] - mazhhkane['num10']  # count without the people not in buildings (group 10 in ACS/11 here)
+buildings_types = x.merge(mazhhkane[['MAZ','HH','HHno0']], left_on='subzone17', right_on='MAZ', how='right')
 # below, now we are making the building distribution match the HH total
 buildings_types.iloc[:, 1:10] # check
 buildings_types.iloc[:, 1:10] = buildings_types.iloc[:, 1:10].multiply(buildings_types['HHno0'], axis='index')
 # so this is the building controls from buildings (assume households are distributed as the household building types are distributed)
 blgControls = buildings_types
-blgControls.to_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/mchenry/buildingcontrolsfrombuildings_mchenry.csv")
+blgControls.to_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/counties/kane/buildingcontrolsfrombuildings_kanetest.csv")
 
 
 # to get the factors...
 # get the tract dist from before at the tract level (D:\2010lakecountypop\bld_control\distribution_pct from before)
      # (this is what we applied to the maz totals before to get controls for counties where we don't have bld data from noel)
-distribution_pct_df = pd.read_csv("D:/2010lakecountypop/bld_control/distribution_pct.csv")
+distribution_pct_df = pd.read_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/Desktop Copy/bld_control/distribution_pct.csv")
 # then group the maz by the tract level and get a number of hh
 tract_hh = blgControls.groupby('Tract').agg({'HHno0':'sum'}).reset_index()
 # then get a number of hh in each bin based on the tract distribution (tract level)
@@ -223,7 +225,7 @@ factors = compdf[['joinid','twoF','threeF','fourF','fiveF','sixF','sevenF','eigh
 #pd.options.display.float_format = '{:.2f}'.format
 #factors = pd.read_csv("D:/2010lakecountypop/bld_control/dupage/bld_controls_factors_dp.csv")
 
-a = blgControls.merge(factors,left_on='Tract',right_on='joinid')
+a = blgControls.merge(factors,left_on='Tract',right_on='joinid', how='left')
 
 # then multiply the building controls from buildings by the right factor
 a['twon'] = a[2] * a['twoF']
@@ -241,11 +243,11 @@ a['onen'] = a[1] * a['oneF']
 # sort it out?
 
 #b = a.iloc[:,27:37].round(0)
-b = a[['maz','HHno0','Tract','twon','threen','fourn','fiven','sixn','sevenn','eightn','ninen',
+b = a[['maz','MAZ','HH','HHno0','Tract','twon','threen','fourn','fiven','sixn','sevenn','eightn','ninen',
        'onen'
        ]].round(0)
 
-b.to_csv("D:/2010lakecountypop/bld_control/lake/bld_controls_multiplied_lake.csv",index=False)
+b.to_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/counties/kane//bld_controls_multiplied_kane_test.csv",index=False)
 b.to_csv("D:/2010lakecountypop/bld_control/dupage/bld_controls_multiplied_dp.csv",index=False)
 b.to_csv("D:/2010lakecountypop/bld_control/will/bld_controls_multiplied_will.csv",index=False)
 b.to_csv("D:/2010lakecountypop/bld_control/kanekendall/bld_controls_multiplied_kane.csv",index=False)
@@ -255,17 +257,17 @@ b.to_csv("D:/2010lakecountypop/bld_control/mchenry/bld_controls_multiplied_mchen
 
 # then rescale to make sure that each maz HH is still the right number
 
-b['sum'] = b.iloc[:, 3:12].sum(axis=1)
+b['sum'] = b.iloc[:, 5:14].sum(axis=1)
 b['scale'] = b['HHno0'] / b['sum']
-b.iloc[:,3:12]
-b.iloc[:,3:12] = b.iloc[:,3:12].multiply(b['scale'], axis='index')
-b.iloc[:,3:12] = b.iloc[:,3:12].round(0)
-b['sum'] = b.iloc[:,3:12].sum(axis=1)
+b.iloc[:,5:14]
+b.iloc[:,5:14] = b.iloc[:,5:14].multiply(b['scale'], axis='index')
+b.iloc[:,5:14] = b.iloc[:,5:14].round(0)
+b['sum'] = b.iloc[:,5:14].sum(axis=1)
 # then fix the ones that are like +/- 1 or 2 off because of rounding
 b['fix'] = b['sum'] - b['HHno0']
 # just fold the strays into group 2 unless there are no 2s
 b.loc[b['twon'] != 0, 'twon'] = b['twon'] - b['fix']
-b['sum'] = b.iloc[:,3:12].sum(axis=1)
+b['sum'] = b.iloc[:,5:14].sum(axis=1)
 b['fix'] = b['sum'] - b['HHno0']
 
 # i'm saving/working with them in file:///D:\2010lakecountypop\bld_control\master_bld_control_wb.xlsx

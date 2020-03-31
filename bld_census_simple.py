@@ -11,7 +11,7 @@ import pandas as pd
 
 
 ######## blg controls from building file
-buildings = pd.read_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/counties/kane/kanebuildingsextraatts_v1.csv")
+buildings = pd.read_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/counties/kane/kanebuildingsextraatts_v2.csv")
 buildings = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/dupage/dupagebuildingsextraatts.csv")
 buildings = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/cook/cookbuildingsextraatts.csv")
 buildings = pd.read_csv("C:/Users/sbuchhorn/Desktop/2010pop/buildings/will/willbuildingsextraatts.csv")
@@ -133,4 +133,4 @@ b['sum'] = b.iloc[:, 5:14].sum(axis=1)
 b['fix'] = b['sum'] - b['HHno0']
 
 # i'm saving/working with them in file:///D:\2010lakecountypop\bld_control\master_bld_control_wb.xlsx
-b.to_clipboard()
+b.fillna(0).to_clipboard()

@@ -16,22 +16,22 @@ import sys
 import os
 
 # end with slash!
-outputdir = "T:/buchhorn/buildingtesting/test4b/"
+outputdir = "/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/runs/popsim25kane/buildings/"
 
 # check that output dirs are ok
 if not os.path.exists(outputdir):
     sys.stderr.write("output folder doesn't exist! \n fix before continuing")
 
 # TEST DATA
-fullhh = pd.read_csv("T:/buchhorn/buildingtesting/hhtest4.csv")
+fullhh = pd.read_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/runs/popsim25kane/post/kanehh.csv")
 fullhh = fullhh[fullhh['BLD'] != 10]    # exclude households not in buildings (boat, rv, van, etc)
-fullbldg = pd.read_csv("T:/buchhorn/buildingtesting/bldgtest4.csv")
+fullbldg = pd.read_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/counties/kane/kanebuildingsextraatts_v2.csv")
 fullbldg['remaining_residential_units'] = fullbldg['residential_units']
 
-neartaz = pd.read_csv("T:/buchhorn/buildingtesting/sz17neighbor.csv")
+neartaz = pd.read_csv("/Users/sarahbuchhorn/Desktop/cmap_wfh/urbansim/sz17neighbor.csv")
 neighborDict = neartaz.groupby('zone17')['nbr_zone17'].apply(list).to_dict()
 
-puma = list(set([x for x in fullhh['puma']]))
+puma = list(set([x for x in fullhh['puma_x']]))
 random.shuffle(puma)
 
 
@@ -286,9 +286,9 @@ def matchRemainder(unmatched, resultdf, pickorder, bldg, hhdf):
 
 
 #flow
-for i in puma:
+for i in [3003, 3005, 3004]:
     print("working on puma {}".format(i))
-    hh = fullhh[fullhh['puma'] == i]
+    hh = fullhh[fullhh['puma_x'] == i]
     bldg = fullbldg[fullbldg['puma5'] == i]
 
     resultdf, unmatched, failed, hhids = setup(hh)
@@ -303,15 +303,18 @@ for i in puma:
     seriesfailed = pd.Series(failed)
     seriesfailed.to_csv(outputdir + "failed_{}.csv".format(i))
 
-    hhwid = hh.merge(finalresult,left_on='household_id',right_on=finalresult.index)
+    finalresult['household_id'] = finalresult.index
+
+    hhwid = hh.merge(finalresult, on='household_id')
     allinfo = hhwid.merge(bldg, right_on='building_id', left_on='bldgid')
-    allinfo = allinfo[['household_id','maz','subzone17','taz','zone17','puma',
+    allinfo = allinfo[['household_id','maz','subzone17','taz','zone17','puma_x',
              'BUS','CONP','BLD','classbldg', 'building_type_id', 'remaining_residential_units','residential_units',
              'VALP','totalEstValue','improvement_value',
              'YBL2','classyear','year_built',
-                       #land_value
+                       'land_value',
              'RMSP','BDSP2','bedroomsest','residential_sqft',
-             'ACR','classacre','acres',
+             'ACR','classacre',
+                       'area',
              'pickorder','bldgid','score','topscore']]
 
     allinfo.to_csv(outputdir + "allinfo_{}.csv".format(i), index=False)
